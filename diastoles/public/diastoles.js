@@ -183,7 +183,36 @@
 
 	function languageSelector() {
 		const current = selectedInterfaceLanguage();
-		const options = Object.entries(availableLanguages).map(([code, language]) =>
+		const nativeLanguageOrder = [
+			'ar',
+			'fa',
+			'id',
+			'ms',
+			'bn',
+			'ca',
+			'de',
+			'en',
+			'eu',
+			'fr',
+			'gl',
+			'hi',
+			'it',
+			'ja',
+			'pl',
+			'pt',
+			'ru',
+			'zh-cn',
+		];
+		const orderIndex = (code) => {
+			const index = nativeLanguageOrder.indexOf(code);
+			return index === -1 ? nativeLanguageOrder.length : index;
+		};
+		const languages = Object.entries(availableLanguages).sort(([codeA, languageA], [codeB, languageB]) => {
+			if (codeA === current) return -1;
+			if (codeB === current) return 1;
+			return orderIndex(codeA) - orderIndex(codeB) || String(languageA.name || codeA).localeCompare(String(languageB.name || codeB));
+		});
+		const options = languages.map(([code, language]) =>
 			`<option value="${h(code)}"${code === current ? ' selected' : ''}>${h(language.name || code)}</option>`,
 		).join('');
 		return `<label class="diastoles-native-language"><span class="screen-reader-text">Language</span><select data-interface-language aria-label="Language">${options}</select></label>`;
