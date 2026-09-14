@@ -3,7 +3,7 @@ Contributors: diastoles
 Tags: art, multilingual, community, ai
 Requires at least: 6.5
 Requires PHP: 8.0
-Stable tag: 0.15.46
+Stable tag: 0.15.47
 License: GPLv2 or later
 
 An anonymous multilingual experience that connects human memories through smell.
@@ -27,6 +27,9 @@ ranking. Site owners are responsible for publishing an appropriate privacy notic
 and retention policy.
 
 == Changelog ==
+
+= 0.15.47 =
+* Keep optional explanations out of response translations shown in participant recaps.
 
 = 0.15.46 =
 * Sort the public language selector with the current language first and remaining languages by native name.

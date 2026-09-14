@@ -124,7 +124,9 @@ final class Diastoles_Anthropic {
 
 		$prompt = "Analyze the participant's words without embellishing or completing them. "
 			. "Return source_language as a lowercase ISO 639-1 language code, or und only when it cannot be determined. "
-			. "Translate faithfully into English. Extract short, lowercase English labels only when supported by the text. "
+			. "translation_en must be a faithful English translation of Response only. Never include, summarize or translate "
+			. "Optional explanation inside translation_en; the optional explanation is context for analysis and evidence only. "
+			. "Extract short, lowercase English labels only when supported by the text. "
 			. "The smells field contains zero to four independent scent concepts. Each item has phrase and anchors. Phrase must "
 			. "be a complete, meaningful English noun phrase faithfully supported by the response; it may be short ('coffee', "
 			. "'wet earth') or complex ('the sadness of knowing you are close and not understanding how you left'). Anchors "
@@ -167,7 +169,26 @@ final class Diastoles_Anthropic {
 			. "Use ordinary affective descriptions, not diagnoses. "
 			. "Response:\n" . $original . "\n\nOptional explanation:\n" . $explanation;
 
-		return self::request( $prompt, $schema, 900, self::processing_model() );
+		$result = self::request( $prompt, $schema, 900, self::processing_model() );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		$result['translation_en'] = self::clean_response_translation( $original, (string) ( $result['translation_en'] ?? '' ) );
+		return $result;
+	}
+
+	private static function clean_response_translation( string $original, string $translation ): string {
+		$original    = trim( $original );
+		$translation = trim( $translation );
+		if ( '' === $translation || '' === $original ) {
+			return $translation;
+		}
+		$original_normalized    = preg_replace( '/\s+/u', ' ', $original );
+		$translation_normalized = preg_replace( '/\s+/u', ' ', $translation );
+		if ( str_starts_with( $translation_normalized, $original_normalized ) && mb_strlen( $translation_normalized ) > mb_strlen( $original_normalized ) + 8 ) {
+			return $original;
+		}
+		return $translation;
 	}
 
 	public static function rank_candidates( object $target, array $candidates ): array|WP_Error {
