@@ -3,7 +3,7 @@ Contributors: diastoles
 Tags: art, multilingual, community, ai
 Requires at least: 6.5
 Requires PHP: 8.0
-Stable tag: 0.15.49
+Stable tag: 0.15.50
 License: GPLv2 or later
 
 An anonymous multilingual experience that connects human memories through smell.
@@ -27,6 +27,11 @@ ranking. Site owners are responsible for publishing an appropriate privacy notic
 and retention policy.
 
 == Changelog ==
+
+= 0.15.50 =
+* Add an admin Dynamic Translations screen with filters for matices/anchors, concepts, responses, explanations and other inferred kinds.
+* Allow editing and retrying dynamic translations from wp-admin.
+* Queue semantic field translations along with response concepts and matices.
 
 = 0.15.49 =
 * Show optional explanations in the admin Responses list and detail view.

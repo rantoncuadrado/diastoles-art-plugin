@@ -424,6 +424,9 @@ final class Diastoles_I18n {
 				foreach ( array_filter( array_map( 'strval', (array) ( $concept['anchors'] ?? array() ) ) ) as $anchor ) {
 					self::ensure_dynamic_translation( $anchor, $locale, 'en', $process_now );
 				}
+				foreach ( array_filter( array_map( 'strval', (array) ( $concept['semantic_fields'] ?? array() ) ) ) as $field ) {
+					self::ensure_dynamic_translation( $field, $locale, 'en', $process_now );
+				}
 			}
 		}
 	}

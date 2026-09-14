@@ -60,6 +60,14 @@ final class Diastoles_Admin {
 		);
 		add_submenu_page(
 			'diastoles',
+			'Dynamic Translations',
+			'Dynamic Translations',
+			'manage_options',
+			'diastoles-dynamic-translations',
+			array( self::class, 'render_dynamic_translations' )
+		);
+		add_submenu_page(
+			'diastoles',
 			'Data & Export',
 			'Data & Export',
 			'manage_options',
@@ -976,6 +984,193 @@ final class Diastoles_Admin {
 				$response_id
 			)
 		);
+	}
+
+	public static function render_dynamic_translations(): void {
+		self::require_admin();
+		global $wpdb;
+		$table = Diastoles_DB::table( 'dynamic_translations' );
+		$language = Diastoles_I18n::normalize( $_GET['language'] ?? '' );
+		$status = sanitize_key( wp_unslash( $_GET['status'] ?? '' ) );
+		$kind = sanitize_key( wp_unslash( $_GET['kind'] ?? '' ) );
+		$search = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
+		$page = max( 1, absint( $_GET['paged'] ?? 1 ) );
+		$per_page = 50;
+		$where = array( '1=1' );
+		$params = array();
+		if ( $language ) {
+			$where[] = 'language_code = %s';
+			$params[] = $language;
+		}
+		if ( in_array( $status, array( 'pending', 'complete', 'failed', 'missing' ), true ) ) {
+			$where[] = 'status = %s';
+			$params[] = $status;
+		}
+		if ( '' !== $search ) {
+			$like = '%' . $wpdb->esc_like( $search ) . '%';
+			$where[] = '(source_text LIKE %s OR translated_text LIKE %s)';
+			$params[] = $like;
+			$params[] = $like;
+		}
+		$where_sql = implode( ' AND ', $where );
+		$sql_base = "FROM $table WHERE $where_sql";
+		$prepared_base = $params ? $wpdb->prepare( $sql_base, ...$params ) : $sql_base;
+		$raw_rows = $wpdb->get_results(
+			"SELECT id, source_hash, language_code, source_text, translated_text, status, updated_at
+			$prepared_base
+			ORDER BY updated_at DESC, id DESC
+			LIMIT 500"
+		);
+		$kinds = self::dynamic_translation_kind_index();
+		$rows = array_values(
+			array_filter(
+				array_map(
+					static function ( object $row ) use ( $kinds ): object {
+						$row->kind = $kinds[ $row->source_hash ] ?? self::infer_dynamic_translation_kind( (string) $row->source_text );
+						return $row;
+					},
+					$raw_rows
+				),
+				static fn( object $row ): bool => '' === $kind || $row->kind === $kind
+			)
+		);
+		$total = count( $rows );
+		$rows = array_slice( $rows, ( $page - 1 ) * $per_page, $per_page );
+		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
+		$base_url = remove_query_arg( array( 'paged', 'saved', 'retried' ) );
+		?>
+		<div class="wrap">
+			<h1>Dynamic Translations</h1>
+			<p>Translations for participant fragments, explanations, scent concepts, matices/anchors, semantic fields and relationship evidence. “Kind” is inferred from saved response analysis.</p>
+			<?php if ( isset( $_GET['saved'] ) ) : ?>
+				<div class="notice notice-success is-dismissible"><p>Translation saved.</p></div>
+			<?php endif; ?>
+			<?php if ( isset( $_GET['retried'] ) ) : ?>
+				<div class="notice notice-success is-dismissible"><p><?php echo esc_html( absint( $_GET['retried'] ) ); ?> translations queued for retry.</p></div>
+			<?php endif; ?>
+			<form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:16px 0">
+				<input type="hidden" name="page" value="diastoles-dynamic-translations">
+				<label>Search<br><input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Source or translation"></label>
+				<label>Kind<br>
+					<select name="kind">
+						<?php foreach ( array( '' => 'All kinds', 'response' => 'Response', 'explanation' => 'Explanation', 'concept' => 'Concept phrase', 'anchor' => 'Matiz / anchor', 'semantic_field' => 'Semantic field', 'evidence' => 'Evidence/context', 'unknown' => 'Unknown' ) as $value => $label ) : ?>
+							<option value="<?php echo esc_attr( $value ); ?>"<?php selected( $kind, $value ); ?>><?php echo esc_html( $label ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<label>Language<br>
+					<select name="language">
+						<option value="">All languages</option>
+						<?php foreach ( Diastoles_I18n::active_languages() as $locale => $info ) : ?>
+							<option value="<?php echo esc_attr( $locale ); ?>"<?php selected( $language, $locale ); ?>><?php echo esc_html( $info['name'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<label>Status<br>
+					<select name="status">
+						<?php foreach ( array( '' => 'All statuses', 'pending' => 'Pending', 'complete' => 'Complete', 'failed' => 'Failed' ) as $value => $label ) : ?>
+							<option value="<?php echo esc_attr( $value ); ?>"<?php selected( $status, $value ); ?>><?php echo esc_html( $label ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<?php submit_button( 'Filter', 'secondary', 'submit', false ); ?>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=diastoles-dynamic-translations' ) ); ?>">Reset</a>
+			</form>
+			<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post" style="margin: 0 0 12px">
+				<input type="hidden" name="action" value="diastoles_retry_dynamic_translations">
+				<input type="hidden" name="kind" value="<?php echo esc_attr( $kind ); ?>">
+				<input type="hidden" name="language" value="<?php echo esc_attr( $language ); ?>">
+				<input type="hidden" name="status" value="<?php echo esc_attr( $status ); ?>">
+				<input type="hidden" name="s" value="<?php echo esc_attr( $search ); ?>">
+				<?php wp_nonce_field( 'diastoles_retry_dynamic_translations' ); ?>
+				<?php submit_button( 'Retry pending/missing shown filter', 'secondary', 'submit', false ); ?>
+			</form>
+			<table class="widefat striped">
+				<thead><tr><th>Kind</th><th>Source</th><th>Language</th><th>Status</th><th>Translation</th><th>Updated</th><th>Save</th></tr></thead>
+				<tbody>
+					<?php if ( ! $rows ) : ?>
+						<tr><td colspan="7">No dynamic translations match this filter.</td></tr>
+					<?php endif; ?>
+					<?php foreach ( $rows as $row ) : ?>
+						<tr>
+							<td><?php echo esc_html( self::dynamic_translation_kind_label( $row->kind ) ); ?></td>
+							<td><code><?php echo esc_html( mb_substr( (string) $row->source_text, 0, 220 ) ); ?></code></td>
+							<td><?php echo esc_html( Diastoles_I18n::languages()[ $row->language_code ]['name'] ?? $row->language_code ); ?></td>
+							<td><?php echo esc_html( $row->status ); ?></td>
+							<td>
+								<form id="dynamic-translation-<?php echo esc_attr( (int) $row->id ); ?>" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+									<input type="hidden" name="action" value="diastoles_save_dynamic_translation">
+									<input type="hidden" name="translation_id" value="<?php echo esc_attr( (int) $row->id ); ?>">
+									<?php wp_nonce_field( 'diastoles_save_dynamic_translation_' . (int) $row->id ); ?>
+									<textarea class="large-text" rows="2" name="translated_text"><?php echo esc_textarea( $row->translated_text ); ?></textarea>
+								</form>
+							</td>
+							<td><?php echo esc_html( $row->updated_at ); ?></td>
+							<td><button form="dynamic-translation-<?php echo esc_attr( (int) $row->id ); ?>" class="button button-secondary">Save</button></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+			<?php if ( $total_pages > 1 ) : ?>
+				<div class="tablenav"><div class="tablenav-pages">
+					<span class="displaying-num"><?php echo esc_html( $total ); ?> translations</span>
+					<?php echo wp_kses_post( paginate_links( array( 'base' => esc_url_raw( add_query_arg( 'paged', '%#%', $base_url ) ), 'format' => '', 'current' => $page, 'total' => $total_pages, 'prev_text' => '‹', 'next_text' => '›' ) ) ); ?>
+				</div></div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private static function dynamic_translation_kind_label( string $kind ): string {
+		return array(
+			'response'       => 'Response',
+			'explanation'    => 'Explanation',
+			'concept'        => 'Concept phrase',
+			'anchor'         => 'Matiz / anchor',
+			'semantic_field' => 'Semantic field',
+			'evidence'       => 'Evidence/context',
+			'unknown'        => 'Unknown',
+		)[ $kind ] ?? 'Unknown';
+	}
+
+	private static function infer_dynamic_translation_kind( string $source_text ): string {
+		$words = preg_split( '/\s+/u', trim( $source_text ) ) ?: array();
+		return count( array_filter( $words ) ) <= 3 ? 'unknown' : 'evidence';
+	}
+
+	private static function dynamic_translation_kind_index(): array {
+		global $wpdb;
+		$responses = Diastoles_DB::table( 'responses' );
+		$rows = $wpdb->get_results( "SELECT original_text, explanation_text, analysis_json FROM $responses WHERE processing_status = 'complete' ORDER BY id DESC LIMIT 1000" );
+		$index = array();
+		$add = static function ( string $text, string $kind ) use ( &$index ): void {
+			$text = trim( $text );
+			if ( '' === $text ) {
+				return;
+			}
+			$hash = hash( 'sha256', $text );
+			if ( ! isset( $index[ $hash ] ) || 'unknown' === $index[ $hash ] ) {
+				$index[ $hash ] = $kind;
+			}
+		};
+		foreach ( $rows as $row ) {
+			$add( (string) $row->original_text, 'response' );
+			$add( (string) $row->explanation_text, 'explanation' );
+			$analysis = json_decode( (string) $row->analysis_json, true ) ?: array();
+			foreach ( Diastoles_Anthropic::smell_concepts( $analysis ) as $concept ) {
+				$add( (string) ( $concept['phrase'] ?? '' ), 'concept' );
+				foreach ( array_filter( array_map( 'strval', (array) ( $concept['anchors'] ?? array() ) ) ) as $anchor ) {
+					$add( $anchor, 'anchor' );
+				}
+				foreach ( array_filter( array_map( 'strval', (array) ( $concept['semantic_fields'] ?? array() ) ) ) as $field ) {
+					$add( $field, 'semantic_field' );
+				}
+			}
+			foreach ( (array) ( $analysis['supporting_evidence'] ?? array() ) as $evidence ) {
+				$add( (string) ( $evidence['excerpt'] ?? '' ), 'evidence' );
+			}
+		}
+		return $index;
 	}
 
 	public static function render_export(): void {
@@ -2739,6 +2934,72 @@ final class Diastoles_Admin {
 		}
 
 		wp_safe_redirect( admin_url( 'admin.php?page=diastoles-responses&response_id=' . $response_id ) );
+		exit;
+	}
+
+	public static function save_dynamic_translation(): void {
+		self::require_admin();
+		$translation_id = absint( $_POST['translation_id'] ?? 0 );
+		check_admin_referer( 'diastoles_save_dynamic_translation_' . $translation_id );
+		global $wpdb;
+		$table = Diastoles_DB::table( 'dynamic_translations' );
+		$text = sanitize_textarea_field( (string) wp_unslash( $_POST['translated_text'] ?? '' ) );
+		$wpdb->update(
+			$table,
+			array(
+				'translated_text' => $text,
+				'status'          => '' === trim( $text ) ? 'pending' : 'complete',
+				'updated_at'      => current_time( 'mysql', true ),
+			),
+			array( 'id' => $translation_id ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+		wp_safe_redirect( add_query_arg( 'saved', '1', wp_get_referer() ?: admin_url( 'admin.php?page=diastoles-dynamic-translations' ) ) );
+		exit;
+	}
+
+	public static function retry_dynamic_translations(): void {
+		self::require_admin();
+		check_admin_referer( 'diastoles_retry_dynamic_translations' );
+		global $wpdb;
+		$table = Diastoles_DB::table( 'dynamic_translations' );
+		$language = Diastoles_I18n::normalize( $_POST['language'] ?? '' );
+		$status = sanitize_key( wp_unslash( $_POST['status'] ?? '' ) );
+		$kind = sanitize_key( wp_unslash( $_POST['kind'] ?? '' ) );
+		$search = sanitize_text_field( wp_unslash( $_POST['s'] ?? '' ) );
+		$where = array( "status IN ('pending','failed')" );
+		$params = array();
+		if ( $language ) {
+			$where[] = 'language_code = %s';
+			$params[] = $language;
+		}
+		if ( in_array( $status, array( 'pending', 'failed' ), true ) ) {
+			$where[] = 'status = %s';
+			$params[] = $status;
+		}
+		if ( '' !== $search ) {
+			$like = '%' . $wpdb->esc_like( $search ) . '%';
+			$where[] = '(source_text LIKE %s OR translated_text LIKE %s)';
+			$params[] = $like;
+			$params[] = $like;
+		}
+		$sql = 'SELECT id, source_hash, language_code, source_text FROM ' . $table . ' WHERE ' . implode( ' AND ', $where ) . ' ORDER BY updated_at DESC LIMIT 500';
+		$rows = $wpdb->get_results( $params ? $wpdb->prepare( $sql, ...$params ) : $sql );
+		$kinds = self::dynamic_translation_kind_index();
+		$count = 0;
+		foreach ( $rows as $row ) {
+			$row_kind = $kinds[ $row->source_hash ] ?? self::infer_dynamic_translation_kind( (string) $row->source_text );
+			if ( '' !== $kind && $row_kind !== $kind ) {
+				continue;
+			}
+			$wpdb->update( $table, array( 'status' => 'pending', 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => (int) $row->id ), array( '%s', '%s' ), array( '%d' ) );
+			if ( ! wp_next_scheduled( 'diastoles_translate_dynamic_text', array( (string) $row->source_hash, (string) $row->language_code ) ) ) {
+				wp_schedule_single_event( time() + 1, 'diastoles_translate_dynamic_text', array( (string) $row->source_hash, (string) $row->language_code ) );
+			}
+			$count++;
+		}
+		wp_safe_redirect( add_query_arg( 'retried', $count, wp_get_referer() ?: admin_url( 'admin.php?page=diastoles-dynamic-translations' ) ) );
 		exit;
 	}
 

@@ -28,6 +28,8 @@ final class Diastoles_Plugin {
 		add_action( 'admin_post_diastoles_delete_participant', array( 'Diastoles_Admin', 'delete_participant' ) );
 		add_action( 'admin_post_diastoles_moderate_response', array( 'Diastoles_Admin', 'moderate_response' ) );
 		add_action( 'admin_post_diastoles_save_response_translation', array( 'Diastoles_Admin', 'save_response_translation' ) );
+		add_action( 'admin_post_diastoles_save_dynamic_translation', array( 'Diastoles_Admin', 'save_dynamic_translation' ) );
+		add_action( 'admin_post_diastoles_retry_dynamic_translations', array( 'Diastoles_Admin', 'retry_dynamic_translations' ) );
 		add_action( 'admin_post_diastoles_retry_response_translations', array( 'Diastoles_Admin', 'retry_response_translations' ) );
 		add_action( 'admin_post_diastoles_retry_response_processing', array( 'Diastoles_Admin', 'retry_response_processing' ) );
 		add_action( 'admin_post_diastoles_test_anthropic', array( 'Diastoles_Admin', 'test_anthropic' ) );
