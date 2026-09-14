@@ -667,7 +667,7 @@ final class Diastoles_Admin {
 		$responses = Diastoles_DB::table( 'responses' );
 		$questions = Diastoles_DB::table( 'questions' );
 		$rows      = $wpdb->get_results(
-			"SELECT r.id, r.public_id, r.original_text, r.source_language, r.translation_en, r.processing_status,
+			"SELECT r.id, r.public_id, r.original_text, r.explanation_text, r.source_language, r.translation_en, r.processing_status,
 				r.allow_network, r.withdrawn, r.created_at, q.short_label, q.prompt
 			FROM $responses r
 			INNER JOIN $questions q ON q.id = r.question_id
@@ -688,7 +688,13 @@ final class Diastoles_Admin {
 				<tbody>
 					<?php foreach ( $rows as $row ) : ?>
 						<tr>
-							<td><code><?php echo esc_html( substr( $row->public_id, 0, 8 ) ); ?></code><br><?php echo esc_html( wp_trim_words( $row->original_text, 16 ) ); ?></td>
+							<td>
+								<code><?php echo esc_html( substr( $row->public_id, 0, 8 ) ); ?></code><br>
+								<?php echo esc_html( wp_trim_words( $row->original_text, 16 ) ); ?>
+								<?php if ( '' !== trim( (string) $row->explanation_text ) ) : ?>
+									<br><small><em>Explanation:</em> <?php echo esc_html( wp_trim_words( $row->explanation_text, 18 ) ); ?></small>
+								<?php endif; ?>
+							</td>
 							<td><?php echo esc_html( $row->short_label ?: wp_trim_words( $row->prompt, 12 ) ); ?></td>
 							<td>
 								<?php echo esc_html( $row->processing_status ); ?><?php echo $row->withdrawn ? ' · withdrawn' : ''; ?>
@@ -724,6 +730,7 @@ final class Diastoles_Admin {
 			wp_die( esc_html__( 'Response not found.', 'diastoles' ) );
 		}
 		$translations = self::response_translation_rows( $row );
+		$explanation_translations = self::explanation_translation_rows( $row );
 		$latest_error = self::latest_response_errors( array( $response_id ) )[ $response_id ] ?? null;
 		$processing_events = self::response_processing_events( $response_id );
 		?>
@@ -798,7 +805,7 @@ final class Diastoles_Admin {
 					<?php endforeach; ?>
 				</tbody>
 			</table>
-			<h2>Translations</h2>
+			<h2>Response translations</h2>
 			<table class="widefat striped">
 				<thead><tr><th>Language</th><th>Status</th><th>Translation</th><th>Save</th></tr></thead>
 				<tbody>
@@ -811,7 +818,8 @@ final class Diastoles_Admin {
 									<input type="hidden" name="action" value="diastoles_save_response_translation">
 									<input type="hidden" name="response_id" value="<?php echo esc_attr( $row->id ); ?>">
 									<input type="hidden" name="locale" value="<?php echo esc_attr( $locale ); ?>">
-									<?php wp_nonce_field( 'diastoles_save_response_translation_' . (int) $row->id . '_' . $locale ); ?>
+									<input type="hidden" name="source" value="response">
+									<?php wp_nonce_field( 'diastoles_save_response_translation_' . (int) $row->id . '_' . $locale . '_response' ); ?>
 									<textarea class="large-text" rows="3" name="translated_text"><?php echo esc_textarea( $translation['text'] ); ?></textarea>
 								</form>
 							</td>
@@ -820,6 +828,32 @@ final class Diastoles_Admin {
 					<?php endforeach; ?>
 				</tbody>
 			</table>
+			<?php if ( '' !== trim( (string) $row->explanation_text ) ) : ?>
+				<h2>Explanation translations</h2>
+				<p class="description">These translations are stored separately from the main response translation and are used when the optional explanation is shown publicly.</p>
+				<table class="widefat striped">
+					<thead><tr><th>Language</th><th>Status</th><th>Explanation translation</th><th>Save</th></tr></thead>
+					<tbody>
+						<?php foreach ( $explanation_translations as $locale => $translation ) : ?>
+							<tr>
+								<td><?php echo esc_html( Diastoles_I18n::languages()[ $locale ]['name'] ?? strtoupper( $locale ) ); ?></td>
+								<td><?php echo esc_html( $translation['status'] ); ?></td>
+								<td>
+									<form id="explanation-translation-<?php echo esc_attr( $locale ); ?>" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+										<input type="hidden" name="action" value="diastoles_save_response_translation">
+										<input type="hidden" name="response_id" value="<?php echo esc_attr( $row->id ); ?>">
+										<input type="hidden" name="locale" value="<?php echo esc_attr( $locale ); ?>">
+										<input type="hidden" name="source" value="explanation">
+										<?php wp_nonce_field( 'diastoles_save_response_translation_' . (int) $row->id . '_' . $locale . '_explanation' ); ?>
+										<textarea class="large-text" rows="3" name="translated_text"><?php echo esc_textarea( $translation['text'] ); ?></textarea>
+									</form>
+								</td>
+								<td><button form="explanation-translation-<?php echo esc_attr( $locale ); ?>" class="button button-secondary">Save</button></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
 		</div>
 		<script>
 			document.querySelectorAll('form[action*="admin-post.php"]').forEach((form) => {
@@ -859,6 +893,34 @@ final class Diastoles_Admin {
 					'status' => '' !== trim( (string) $response->translation_en ) ? 'complete' : 'pending',
 					'text'   => (string) $response->translation_en,
 				);
+			} else {
+				$row = $dynamic[ $locale ] ?? null;
+				$rows[ $locale ] = array(
+					'status' => $row ? (string) $row->status : 'missing',
+					'text'   => $row ? (string) $row->translated_text : '',
+				);
+			}
+		}
+		return $rows;
+	}
+
+	private static function explanation_translation_rows( object $response ): array {
+		$explanation = trim( (string) ( $response->explanation_text ?? '' ) );
+		if ( '' === $explanation ) {
+			return array();
+		}
+		global $wpdb;
+		$source = Diastoles_I18n::normalize( $response->source_language ?? '' );
+		$hash   = hash( 'sha256', $explanation );
+		$table  = Diastoles_DB::table( 'dynamic_translations' );
+		$dynamic = $wpdb->get_results(
+			$wpdb->prepare( "SELECT language_code, translated_text, status FROM $table WHERE source_hash = %s", $hash ),
+			OBJECT_K
+		);
+		$rows = array();
+		foreach ( Diastoles_I18n::active_languages() as $locale => $language ) {
+			if ( $source && $source === $locale ) {
+				$rows[ $locale ] = array( 'status' => 'original', 'text' => $explanation );
 			} else {
 				$row = $dynamic[ $locale ] ?? null;
 				$rows[ $locale ] = array(
@@ -2639,7 +2701,9 @@ final class Diastoles_Admin {
 		self::require_admin();
 		$response_id = absint( $_POST['response_id'] ?? 0 );
 		$locale      = Diastoles_I18n::normalize( $_POST['locale'] ?? '' );
-		check_admin_referer( 'diastoles_save_response_translation_' . $response_id . '_' . $locale );
+		$source      = sanitize_key( wp_unslash( $_POST['source'] ?? 'response' ) );
+		$source      = in_array( $source, array( 'response', 'explanation' ), true ) ? $source : 'response';
+		check_admin_referer( 'diastoles_save_response_translation_' . $response_id . '_' . $locale . '_' . $source );
 		if ( ! $locale ) {
 			wp_die( esc_html__( 'Invalid language.', 'diastoles' ) );
 		}
@@ -2651,17 +2715,21 @@ final class Diastoles_Admin {
 		$text = sanitize_textarea_field( (string) wp_unslash( $_POST['translated_text'] ?? '' ) );
 
 		global $wpdb;
-		if ( 'en' === $locale ) {
+		if ( 'response' === $source && 'en' === $locale ) {
 			$wpdb->update( Diastoles_DB::table( 'responses' ), array( 'translation_en' => $text ), array( 'id' => $response_id ), array( '%s' ), array( '%d' ) );
 		} else {
+			$source_text = 'explanation' === $source ? (string) $response->explanation_text : (string) $response->original_text;
+			if ( '' === trim( $source_text ) ) {
+				wp_die( esc_html__( 'There is no source text to translate.', 'diastoles' ) );
+			}
 			$table = Diastoles_DB::table( 'dynamic_translations' );
-			$hash  = hash( 'sha256', (string) $response->original_text );
+			$hash  = hash( 'sha256', $source_text );
 			$wpdb->replace(
 				$table,
 				array(
 					'source_hash'     => $hash,
 					'language_code'   => $locale,
-					'source_text'     => (string) $response->original_text,
+					'source_text'     => $source_text,
 					'translated_text' => $text,
 					'status'          => '' === trim( $text ) ? 'pending' : 'complete',
 					'updated_at'      => current_time( 'mysql', true ),
