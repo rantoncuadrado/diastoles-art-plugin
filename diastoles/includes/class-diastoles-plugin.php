@@ -326,7 +326,7 @@ HTML;
 		Diastoles_DB::save_analysis( $response_id, $analysis );
 		$translated_response = Diastoles_DB::get_response( $response_id );
 		if ( $translated_response ) {
-			Diastoles_I18n::pretranslate_response( $translated_response, $analysis );
+			Diastoles_I18n::pretranslate_response( $translated_response, $analysis, false );
 		}
 		return true;
 	}

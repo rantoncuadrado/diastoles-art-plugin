@@ -411,17 +411,17 @@ final class Diastoles_I18n {
 		}
 	}
 
-	public static function pretranslate_response( object $response, array $analysis = array() ): void {
+	public static function pretranslate_response( object $response, array $analysis = array(), bool $process_now = false ): void {
 		$source = self::normalize( $response->source_language ?? '' );
 		foreach ( self::active_languages() as $locale => $language ) {
 			if ( 'en' === $locale || ( $source && $source === $locale ) ) {
 				continue;
 			}
-			self::ensure_dynamic_translation( (string) $response->original_text, $locale, $source, true );
+			self::ensure_dynamic_translation( (string) $response->original_text, $locale, $source, $process_now );
 			foreach ( Diastoles_Anthropic::smell_concepts( $analysis ) as $concept ) {
-				self::ensure_dynamic_translation( (string) ( $concept['phrase'] ?? '' ), $locale, 'en', true );
+				self::ensure_dynamic_translation( (string) ( $concept['phrase'] ?? '' ), $locale, 'en', $process_now );
 				foreach ( array_filter( array_map( 'strval', (array) ( $concept['anchors'] ?? array() ) ) ) as $anchor ) {
-					self::ensure_dynamic_translation( $anchor, $locale, 'en', true );
+					self::ensure_dynamic_translation( $anchor, $locale, 'en', $process_now );
 				}
 			}
 		}

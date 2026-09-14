@@ -352,7 +352,9 @@ final class Diastoles_REST {
 		if ( $needs_review ) {
 			Diastoles_DB::record_processing_error( $response_id, 'Response held for manual content review before analysis.' );
 		} else {
-			do_action( 'diastoles_process_response', $response_id );
+			if ( ! wp_next_scheduled( 'diastoles_process_response', array( $response_id ) ) ) {
+				wp_schedule_single_event( time() + 1, 'diastoles_process_response', array( $response_id ) );
+			}
 		}
 		Diastoles_DB::record_event(
 			'response_submitted',
