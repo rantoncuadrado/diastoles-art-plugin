@@ -418,6 +418,7 @@ final class Diastoles_I18n {
 				continue;
 			}
 			self::ensure_dynamic_translation( (string) $response->original_text, $locale, $source, $process_now );
+			self::ensure_dynamic_translation( (string) ( $response->explanation_text ?? '' ), $locale, $source, $process_now );
 			foreach ( Diastoles_Anthropic::smell_concepts( $analysis ) as $concept ) {
 				self::ensure_dynamic_translation( (string) ( $concept['phrase'] ?? '' ), $locale, 'en', $process_now );
 				foreach ( array_filter( array_map( 'strval', (array) ( $concept['anchors'] ?? array() ) ) ) as $anchor ) {

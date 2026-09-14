@@ -632,6 +632,13 @@ body.diastoles-experience-page #wpadminbar {
 	line-height: 1.45;
 }
 
+.diastoles-trace-explanation {
+	margin: -0.45rem 0 1rem;
+	color: var(--dia-moss);
+	font: italic 1rem/1.55 var(--dia-serif);
+	opacity: 0.88;
+}
+
 .diastoles-connection details,
 .diastoles-translation {
 	margin: 0 0 1rem;

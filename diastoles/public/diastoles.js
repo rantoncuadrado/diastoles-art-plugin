@@ -277,10 +277,38 @@
 		return `<details class="diastoles-translation" data-source-language="${h(sourceLanguage)}" data-translation-is-original="${translationIsOriginal ? 'true' : 'false'}"${matchAttribute}${hidden}><summary>${h(t('translation_summary'))}</summary><p>${h(translatedText)}</p></details>`;
 	}
 
+	function translatedVoice(node, fragment, explanation, sourceLanguage, hideWhenSourceMatchesInterface = true) {
+		const normalizedSource = normalizeLanguage(sourceLanguage);
+		const responseTranslation = node.translation || '';
+		const explanationTranslation = node.explanation_translation || '';
+		if (!responseTranslation && !explanationTranslation && normalizedSource && normalizedSource !== selectedInterfaceLanguage()) {
+			return `<p class="diastoles-translation-pending">${h(t('translation_pending'))}</p>`;
+		}
+		const responseDiffers = responseTranslation && responseTranslation !== fragment;
+		const explanationDiffers = explanation && explanationTranslation && explanationTranslation !== explanation;
+		if (!responseDiffers && !explanationDiffers) return '';
+		const hidden = hideWhenSourceMatchesInterface && normalizedSource === selectedInterfaceLanguage() ? ' hidden' : '';
+		const matchAttribute = hideWhenSourceMatchesInterface ? ' data-hide-when-source-matches-interface="true"' : '';
+		return `<details class="diastoles-translation" data-source-language="${h(sourceLanguage)}" data-translation-is-original="false"${matchAttribute}${hidden}><summary>${h(t('translation_summary'))}</summary>${responseDiffers ? `<p>${h(responseTranslation)}</p>` : ''}${explanationDiffers ? `<p><em>${h(explanationTranslation)}</em></p>` : ''}</details>`;
+	}
+
 	function originalFragment(node, className = 'diastoles-trace-fragment') {
 		const fragment = node.fragment ?? node.original ?? '';
+		const explanation = node.explanation || '';
 		const language = node.language || 'und';
-		return `<p class="${h(className)}"><span class="notranslate" translate="no"${language !== 'und' ? ` lang="${h(language)}"` : ''}>“${h(fragment)}”</span></p>${translatedFragment(fragment, node.translation, language, true)}`;
+		const explanationMarkup = explanation ? `<p class="diastoles-trace-explanation"><span class="notranslate" translate="no"${language !== 'und' ? ` lang="${h(language)}"` : ''}>${h(explanation)}</span></p>` : '';
+		return `<p class="${h(className)}"><span class="notranslate" translate="no"${language !== 'und' ? ` lang="${h(language)}"` : ''}>“${h(fragment)}”</span></p>${explanationMarkup}${translatedVoice(node, fragment, explanation, language, true)}`;
+	}
+
+	function truncateText(text, limit = 220) {
+		const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+		return normalized.length > limit ? `${normalized.slice(0, Math.max(0, limit - 1)).trim()}…` : normalized;
+	}
+
+	function compactVoice(node, limit = 220) {
+		const response = node?.translation || node?.fragment || node?.original || '';
+		const explanation = node?.explanation_translation || node?.explanation || '';
+		return truncateText(explanation ? `${response} — ${explanation}` : response, limit);
 	}
 
 	function loadMoreArticles(list, visible, total) {
@@ -1158,8 +1186,8 @@
 	function fullEdgeTooltip(edge, nodesById) {
 		const source = nodesById.get(edge.source);
 		const target = nodesById.get(edge.target);
-		const sourcePair = `${source?.question || source?.question_label || ''} — “${source?.translation || t('translation_pending')}”`;
-		const targetPair = `${target?.question || target?.question_label || ''} — “${target?.translation || t('translation_pending')}”`;
+		const sourcePair = `${source?.question || source?.question_label || ''} — “${compactVoice(source) || t('translation_pending')}”`;
+		const targetPair = `${target?.question || target?.question_label || ''} — “${compactVoice(target) || t('translation_pending')}”`;
 		return `• ${sourcePair}\n• ${targetPair}`;
 	}
 
@@ -1186,15 +1214,15 @@
 		const target = nodesById.get(edge.target);
 		const lines = [
 			relationDisplayText(edge.type),
-			`• ${source?.question || source?.question_label || ''} — “${source?.translation || t('translation_pending')}”`,
-			`• ${target?.question || target?.question_label || ''} — “${target?.translation || t('translation_pending')}”`,
+			`• ${source?.question || source?.question_label || ''} — “${compactVoice(source) || t('translation_pending')}”`,
+			`• ${target?.question || target?.question_label || ''} — “${compactVoice(target) || t('translation_pending')}”`,
 		];
 		return tooltipSourceMarkup(`${prefix}edge:${edge.id}`, lines);
 	}
 
 	function edgeTooltipText(edge, source, target) {
-		const sourcePair = `${source?.question || source?.question_label || ''} — “${source?.translation || t('translation_pending')}”`;
-		const targetPair = `${target?.question || target?.question_label || ''} — “${target?.translation || t('translation_pending')}”`;
+		const sourcePair = `${source?.question || source?.question_label || ''} — “${compactVoice(source) || t('translation_pending')}”`;
+		const targetPair = `${target?.question || target?.question_label || ''} — “${compactVoice(target) || t('translation_pending')}”`;
 		return `${relationDisplayText(edge.type)}\n• ${sourcePair}\n• ${targetPair}`;
 	}
 

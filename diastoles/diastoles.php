@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Diástoles
  * Description: A multilingual, anonymous experience that connects human memories through smells.
- * Version: 0.15.47
+ * Version: 0.15.48
  * Author: Diastoles
  * Requires at least: 6.5
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DIASTOLES_VERSION', '0.15.47' );
+define( 'DIASTOLES_VERSION', '0.15.48' );
 define( 'DIASTOLES_FILE', __FILE__ );
 define( 'DIASTOLES_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DIASTOLES_URL', plugin_dir_url( __FILE__ ) );

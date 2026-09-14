@@ -475,7 +475,7 @@ final class Diastoles_REST {
 		$connections = Diastoles_DB::table( 'connections' );
 		$questions   = Diastoles_DB::table( 'questions' );
 		$nodes       = $wpdb->get_results(
-			"SELECT r.public_id, r.original_text, r.translation_en, r.source_language, r.analysis_json,
+			"SELECT r.public_id, r.original_text, r.explanation_text, r.translation_en, r.source_language, r.analysis_json,
 				q.id AS question_id, q.prompt AS question_prompt, q.short_label AS question_short_label, q.followup AS question_followup, q.theme AS question_theme
 			FROM $responses r
 			INNER JOIN $questions q ON q.id = r.question_id
@@ -502,7 +502,8 @@ final class Diastoles_REST {
 			) );
 			$response->question_prompt      = $localized_question['prompt'];
 			$response->question_short_label = $localized_question['short_label'];
-			$localized_fragment = self::response_translation( $response, $locale );
+			$localized_fragment    = self::response_translation( $response, $locale );
+			$localized_explanation = self::explanation_translation( $response, $locale );
 			$analysis       = json_decode( $response->analysis_json, true ) ?: array();
 			$concepts       = Diastoles_Anthropic::smell_concepts( $analysis );
 			$question_label = trim( (string) $response->question_short_label );
@@ -549,7 +550,9 @@ final class Diastoles_REST {
 			$recent_fragments[] = array(
 				'id'             => $response->public_id,
 				'fragment'       => $response->original_text,
+				'explanation'    => $response->explanation_text,
 				'translation'    => $localized_fragment,
+				'explanation_translation' => $localized_explanation,
 				'language'       => $response->source_language,
 				'question'       => $response->question_prompt,
 				'question_label' => $question_label,
@@ -587,7 +590,9 @@ final class Diastoles_REST {
 					'concept'          => $concept['phrase'],
 					'anchors'          => $concept['anchors'],
 					'fragment'         => $response->original_text,
+					'explanation'      => $response->explanation_text,
 					'translation'      => $localized_fragment,
+					'explanation_translation' => $localized_explanation,
 					'language'         => $response->source_language,
 					'question'         => $response->question_prompt,
 					'question_label'   => $question_label,
@@ -785,13 +790,26 @@ final class Diastoles_REST {
 		return Diastoles_I18n::dynamic_translation( (string) $response->original_text, $locale, $source );
 	}
 
+	private static function explanation_translation( object $response, string $locale ): string {
+		$explanation = trim( (string) ( $response->explanation_text ?? '' ) );
+		if ( '' === $explanation ) {
+			return '';
+		}
+		$locale = Diastoles_I18n::normalize( $locale ) ?: 'en';
+		$source = Diastoles_I18n::normalize( $response->source_language ?? '' );
+		if ( $source && $source === $locale ) {
+			return $explanation;
+		}
+		return Diastoles_I18n::dynamic_translation( $explanation, $locale, $source );
+	}
+
 	private static function participant_responses( int $participant_id, string $locale = 'en' ): array {
 		global $wpdb;
 		$responses = Diastoles_DB::table( 'responses' );
 		$questions = Diastoles_DB::table( 'questions' );
 		$rows      = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT r.public_id, r.original_text, r.translation_en, r.source_language,
+				"SELECT r.public_id, r.original_text, r.explanation_text, r.translation_en, r.source_language,
 					r.processing_status, r.created_at, q.id AS question_id, q.prompt AS question_prompt, q.short_label, q.followup
 				FROM $responses r
 				INNER JOIN $questions q ON q.id = r.question_id
@@ -808,7 +826,9 @@ final class Diastoles_REST {
 				'id'          => $row->public_id,
 				'question'    => $question['prompt'],
 				'original'    => $row->original_text,
+				'explanation' => $row->explanation_text,
 				'translation' => self::response_translation( $row, $locale ),
+				'explanation_translation' => self::explanation_translation( $row, $locale ),
 				'language'    => $row->source_language,
 				'status'      => $row->processing_status,
 				'created'     => mysql2date( DATE_ATOM, $row->created_at . ' UTC', false ),
@@ -827,6 +847,7 @@ final class Diastoles_REST {
 			$wpdb->prepare(
 				"SELECT c.*,
 					CASE WHEN c.participant_a_id = %d THEN rb.original_text ELSE ra.original_text END AS other_original,
+					CASE WHEN c.participant_a_id = %d THEN rb.explanation_text ELSE ra.explanation_text END AS other_explanation,
 					CASE WHEN c.participant_a_id = %d THEN rb.translation_en ELSE ra.translation_en END AS other_translation,
 					CASE WHEN c.participant_a_id = %d THEN rb.source_language ELSE ra.source_language END AS other_language,
 					CASE WHEN c.participant_a_id = %d THEN qb.id ELSE qa.id END AS other_question_id,
@@ -850,6 +871,7 @@ final class Diastoles_REST {
 				$participant_id,
 				$participant_id,
 				$participant_id,
+				$participant_id,
 				$participant_id
 			)
 		);
@@ -865,7 +887,9 @@ final class Diastoles_REST {
 					'context'           => array_values( array_filter( array_map( static fn( string $text ): string => Diastoles_I18n::dynamic_translation( $text, $locale, 'en' ), (array) ( $explanation['context'] ?? array() ) ) ) ),
 					'question'          => $question['prompt'],
 					'fragment'          => $row->other_original,
+					'explanation'       => $row->other_explanation,
 					'translation'       => self::response_translation( (object) array( 'original_text' => $row->other_original, 'translation_en' => $row->other_translation, 'source_language' => $row->other_language ), $locale ),
+					'explanation_translation' => self::explanation_translation( (object) array( 'explanation_text' => $row->other_explanation, 'source_language' => $row->other_language ), $locale ),
 					'language'          => $row->other_language,
 				);
 			},
